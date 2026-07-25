@@ -2,8 +2,8 @@ name: Daily TRY/JPY Video Build
 
 on:
   schedule:
-    # UTC 23:00 = 日本時間 翌8:00 に毎日実行
-    - cron: '0 23 * * *'
+    # UTC 22:00 = 日本時間 翌7:00 に毎日実行
+    - cron: '0 22 * * *'
   workflow_dispatch: {}  # 手動実行ボタンを有効化(動作確認用)
 
 jobs:
@@ -31,3 +31,10 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: python -u scripts/build_video.py
+
+      - name: Upload video as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tryjpy-videos
+          path: output_videos/
+          retention-days: 30
