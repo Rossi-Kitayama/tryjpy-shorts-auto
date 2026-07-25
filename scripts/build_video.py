@@ -28,25 +28,6 @@ SCOPES = [
 SHEET_NAME = '台本'
 VIDEO_SIZE = (1080, 1920)
 
-# pCloud設定
-PCLOUD_UPLOAD_CODE = 'kZ1m9c5Z5lpYYL3bgeJwG7PsnteR8jTmUKSy'  # アップロードリンクのcode
-PCLOUD_API_HOST = os.environ.get('PCLOUD_API_HOST', 'api.pcloud.com')
-PCLOUD_FOLDER_SHOW_URL = 'https://u.pcloud.link/publink/show?code=kZ1m9c5Z5lpYYL3bgeJwG7PsnteR8jTmUKSy'
-
-
-def upload_to_pcloud(local_path, filename):
-    """pCloudのアップロードリンク経由でファイルをアップロードする(認証不要)"""
-    url = f'https://{PCLOUD_API_HOST}/uploadtolink'
-    with open(local_path, 'rb') as f:
-        files = {'file': (filename, f, 'video/mp4')}
-        params = {'code': PCLOUD_UPLOAD_CODE}
-        response = requests.post(url, params=params, files=files)
-
-    result = response.json()
-    if result.get('result') != 0:
-        raise RuntimeError(f'pCloudアップロード失敗: {result}')
-    print(f'  pCloudアップロード成功: {filename}')
-
 
 def get_credentials():
     key_json = os.environ['GOOGLE_SERVICE_ACCOUNT_JSON']
@@ -184,12 +165,20 @@ def main():
         local_video = f'/tmp/video_{i}.mp4'
         build_video(local_image, local_audio, local_video)
 
-        video_filename = f'TRYJPY_{date_text}.mp4'
-        upload_to_pcloud(local_video, video_filename)
+        # 出力用フォルダにコピー(GitHub Actionsのアーティファクトとして保存される)
+        output_dir = 'output_videos'
+        os.makedirs(output_dir, exist_ok=True)
+        final_path = os.path.join(output_dir, f'TRYJPY_{date_text}.mp4')
+        shutil.copy(local_video, final_path)
 
-        # pCloudの共有フォルダ(閲覧・ダウンロード用リンク)をシートに記録
-        sheet.update_cell(i, 4, PCLOUD_FOLDER_SHOW_URL)
-        print(f'行{i}: 完了 → pCloudにアップロード済み ({video_filename})')
+        # GitHub Actionsの実行結果ページへのリンクをシートに記録
+        server_url = os.environ.get('GITHUB_SERVER_URL', '')
+        repo = os.environ.get('GITHUB_REPOSITORY', '')
+        run_id = os.environ.get('GITHUB_RUN_ID', '')
+        result_url = f'{server_url}/{repo}/actions/runs/{run_id}' if run_id else '(実行結果を確認してください)'
+
+        sheet.update_cell(i, 4, result_url)
+        print(f'行{i}: 完了 → {final_path} (ダウンロードは {result_url} から)')
 
 
 if __name__ == '__main__':
