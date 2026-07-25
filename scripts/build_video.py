@@ -96,7 +96,7 @@ def get_audio_duration(audio_path):
 
     result = subprocess.run(
         ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-         '-of', 'default=noprint_wrapping=1:nokey=1', audio_path],
+         '-of', 'default=noprint_wrappers=1:nokey=1', audio_path],
         capture_output=True, text=True
     )
     print(f'  ffprobe stdout: {repr(result.stdout)}')
