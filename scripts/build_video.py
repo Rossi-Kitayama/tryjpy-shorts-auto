@@ -9,8 +9,10 @@ import os
 import io
 import re
 import json
+import shutil
 import subprocess
 import textwrap
+import requests
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -24,8 +26,26 @@ SCOPES = [
 ]
 
 SHEET_NAME = '台本'
-VIDEO_FOLDER_ID = '1jEkzS9d5zU2BVYHJndVDxJTwfxFYhDbM'  # あなたのDrive内に手動作成し、サービスアカウントと共有したフォルダ
 VIDEO_SIZE = (1080, 1920)
+
+# pCloud設定
+PCLOUD_UPLOAD_CODE = 'kZ1m9c5Z5lpYYL3bgeJwG7PsnteR8jTmUKSy'  # アップロードリンクのcode
+PCLOUD_API_HOST = os.environ.get('PCLOUD_API_HOST', 'api.pcloud.com')
+PCLOUD_FOLDER_SHOW_URL = 'https://u.pcloud.link/publink/show?code=kZ1m9c5Z5lpYYL3bgeJwG7PsnteR8jTmUKSy'
+
+
+def upload_to_pcloud(local_path, filename):
+    """pCloudのアップロードリンク経由でファイルをアップロードする(認証不要)"""
+    url = f'https://{PCLOUD_API_HOST}/uploadtolink'
+    with open(local_path, 'rb') as f:
+        files = {'file': (filename, f, 'video/mp4')}
+        params = {'code': PCLOUD_UPLOAD_CODE}
+        response = requests.post(url, params=params, files=files)
+
+    result = response.json()
+    if result.get('result') != 0:
+        raise RuntimeError(f'pCloudアップロード失敗: {result}')
+    print(f'  pCloudアップロード成功: {filename}')
 
 
 def get_credentials():
@@ -135,8 +155,6 @@ def main():
     if len(header) < 4 or header[3] == '':
         sheet.update_cell(1, 4, '動画URL')
 
-    video_folder_id = VIDEO_FOLDER_ID
-
     for i, row in enumerate(rows[1:], start=2):
         date_text = row[0] if len(row) > 0 else ''
         script_text = row[1] if len(row) > 1 else ''
@@ -166,18 +184,12 @@ def main():
         local_video = f'/tmp/video_{i}.mp4'
         build_video(local_image, local_audio, local_video)
 
-        file_metadata = {'name': f'TRYJPY_{date_text}.mp4', 'parents': [video_folder_id]}
-        media = MediaFileUpload(local_video, mimetype='video/mp4')
-        uploaded = drive_service.files().create(
-            body=file_metadata, media_body=media, fields='id'
-        ).execute()
-        drive_service.permissions().create(
-            fileId=uploaded['id'], body={'role': 'reader', 'type': 'anyone'}
-        ).execute()
+        video_filename = f'TRYJPY_{date_text}.mp4'
+        upload_to_pcloud(local_video, video_filename)
 
-        result_url = f"https://drive.google.com/file/d/{uploaded['id']}/view"
-        sheet.update_cell(i, 4, result_url)
-        print(f'行{i}: 完了 → {result_url}')
+        # pCloudの共有フォルダ(閲覧・ダウンロード用リンク)をシートに記録
+        sheet.update_cell(i, 4, PCLOUD_FOLDER_SHOW_URL)
+        print(f'行{i}: 完了 → pCloudにアップロード済み ({video_filename})')
 
 
 if __name__ == '__main__':
