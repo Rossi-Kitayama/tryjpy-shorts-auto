@@ -141,8 +141,16 @@ def main():
         print(f'行{i}: 処理開始 ({date_text})')
 
         audio_id = extract_drive_file_id(audio_url)
+        print(f'  音声URL: {audio_url}')
+        print(f'  抽出したファイルID: {audio_id}')
+
         local_audio = f'/tmp/audio_{i}.wav'
         download_drive_file(drive_service, audio_id, local_audio)
+
+        audio_size = os.path.getsize(local_audio)
+        print(f'  ダウンロードした音声ファイルサイズ: {audio_size} bytes')
+        if audio_size == 0:
+            raise ValueError('ダウンロードした音声ファイルが空です(0 bytes)。共有設定またはファイルIDを確認してください。')
 
         local_image = f'/tmp/caption_{i}.png'
         build_caption_image(date_text, script_text, local_image)
