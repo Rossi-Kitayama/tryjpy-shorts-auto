@@ -90,11 +90,19 @@ def build_caption_image(date_text, script_text, out_path):
 
 
 def get_audio_duration(audio_path):
+    # ファイル形式を確認(diagnostic)
+    file_check = subprocess.run(['file', audio_path], capture_output=True, text=True)
+    print(f'  ファイル形式チェック: {file_check.stdout.strip()}')
+
     result = subprocess.run(
         ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
          '-of', 'default=noprint_wrapping=1:nokey=1', audio_path],
         capture_output=True, text=True
     )
+    print(f'  ffprobe stdout: {repr(result.stdout)}')
+    print(f'  ffprobe stderr: {repr(result.stderr)}')
+    print(f'  ffprobe returncode: {result.returncode}')
+
     return float(result.stdout.strip())
 
 
