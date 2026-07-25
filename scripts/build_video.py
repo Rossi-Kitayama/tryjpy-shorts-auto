@@ -24,7 +24,7 @@ SCOPES = [
 ]
 
 SHEET_NAME = '台本'
-VIDEO_FOLDER_NAME = 'TRY_JPY_動画'
+VIDEO_FOLDER_ID = '1jEkzS9d5zU2BVYHJndVDxJTwfxFYhDbM'  # あなたのDrive内に手動作成し、サービスアカウントと共有したフォルダ
 VIDEO_SIZE = (1080, 1920)
 
 
@@ -135,7 +135,7 @@ def main():
     if len(header) < 4 or header[3] == '':
         sheet.update_cell(1, 4, '動画URL')
 
-    video_folder_id = get_or_create_drive_folder(drive_service, VIDEO_FOLDER_NAME)
+    video_folder_id = VIDEO_FOLDER_ID
 
     for i, row in enumerate(rows[1:], start=2):
         date_text = row[0] if len(row) > 0 else ''
