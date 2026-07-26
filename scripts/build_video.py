@@ -267,6 +267,10 @@ def parse_scenes(script_text):
 
 def build_video(date_text, script_text, audio_path, out_path, workdir):
     scenes = parse_scenes(script_text)
+    print(f'  シーン数: {len(scenes)}')
+    for idx, s in enumerate(scenes):
+        print(f'    シーン{idx}: {s.get("start")}〜{s.get("end")}秒 見出し=「{s.get("headline")}」')
+
     audio_duration = get_audio_duration(audio_path)
 
     # 台本上の秒数の合計を、実際の音声の長さに合わせて比例配分する
