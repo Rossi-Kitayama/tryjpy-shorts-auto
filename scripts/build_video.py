@@ -236,13 +236,31 @@ def mux_audio_with_offset(video_path, audio_path, offset_seconds, out_path, work
 
 
 def parse_scenes(script_text):
-    """シーンJSONを解析する。旧形式(プレーンテキスト)の場合は1シーンとして扱う"""
+    """シーンJSONを解析する。マークダウンのコードブロック記号が混じっていても対応する。
+    解析できない場合は、旧形式(プレーンテキスト)として1シーン扱いにフォールバックする。"""
+    cleaned = script_text.strip()
+
+    # ```json ... ``` や ``` ... ``` のコードブロック記号を除去
+    if cleaned.startswith('```'):
+        cleaned = re.sub(r'^```[a-zA-Z]*\n?', '', cleaned)
+        cleaned = re.sub(r'```\s*$', '', cleaned)
+        cleaned = cleaned.strip()
+
+    # 万一、前後に余計な説明文が付いていた場合に備え、最初の { から最後の } までを抜き出す
+    start = cleaned.find('{')
+    end = cleaned.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        cleaned = cleaned[start:end + 1]
+
     try:
-        parsed = json.loads(script_text)
+        parsed = json.loads(cleaned)
         if parsed.get('scenes'):
             return parsed['scenes']
-    except (json.JSONDecodeError, AttributeError):
-        pass
+        print('  警告: JSONは解析できたが scenes キーが見つからない。フォールバックします。')
+    except (json.JSONDecodeError, AttributeError) as e:
+        print(f'  警告: シーンJSONの解析に失敗しました({e})。フォールバックします。')
+        print(f'  台本の先頭200文字: {script_text[:200]!r}')
+
     # フォールバック: 旧形式のプレーンテキストを1シーンとして扱う
     return [{'start': 0, 'end': 45, 'headline': '今日のトルコリラ円', 'narration': script_text}]
 
