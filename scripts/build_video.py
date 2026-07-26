@@ -142,7 +142,7 @@ def brand_clip(input_video, flag_path, out_path, title_path=None):
         f'[1:v]scale={FLAG_WIDTH}:-1,format=rgba,colorchannelmixer=aa=0.9[flag];'
         f'[0:v]scale={VIDEO_SIZE[0]}:{VIDEO_SIZE[1]}:force_original_aspect_ratio=increase,'
         f'crop={VIDEO_SIZE[0]}:{VIDEO_SIZE[1]},fps=25[base];'
-        f'[base][flag]overlay=x={FLAG_MARGIN}:y=H-h-{FLAG_MARGIN}[withflag]'
+        f'[base][flag]overlay=x=W-w-{FLAG_MARGIN}:y=H-h-{FLAG_MARGIN}[withflag]'
     )
     final_label = '[withflag]'
     if title_path:
