@@ -149,7 +149,7 @@ def brand_clip(input_video, flag_path, out_path, title_path=None):
         filter_complex += ';[withflag][2:v]overlay=0:0[withtitle]'
         final_label = '[withtitle]'
 
-    subprocess.run([
+    result = subprocess.run([
         'ffmpeg', '-y', *inputs,
         '-filter_complex', filter_complex,
         '-map', final_label,
@@ -157,7 +157,12 @@ def brand_clip(input_video, flag_path, out_path, title_path=None):
         '-pix_fmt', 'yuv420p',
         '-c:v', 'libx264',
         out_path
-    ], check=True, capture_output=True)
+    ], capture_output=True)
+
+    if result.returncode != 0:
+        print('  --- FFmpegエラー詳細 ---')
+        print(result.stderr.decode(errors='replace'))
+        raise RuntimeError(f'brand_clip失敗(returncode={result.returncode}): {input_video}')
 
 
 def get_video_duration(video_path):
