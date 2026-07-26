@@ -28,6 +28,13 @@ SCOPES = [
 SHEET_NAME = '台本'
 VIDEO_SIZE = (1080, 1920)
 
+# ブランディング素材(リポジトリ内の固定ファイル)
+OPENING_PATH = 'assets/opening.mp4'
+ENDING_PATH = 'assets/ending.mp4'
+FLAG_PATH = 'assets/turkey_flag.png'
+FLAG_WIDTH = 300      # 国旗の表示幅(px)
+FLAG_MARGIN = 60      # 画面端からの余白(px)
+
 
 def get_credentials():
     key_json = os.environ['GOOGLE_SERVICE_ACCOUNT_JSON']
@@ -65,61 +72,214 @@ def get_or_create_drive_folder(drive_service, name):
     return folder['id']
 
 
-def build_caption_image(date_text, script_text, out_path):
-    """背景+テロップの静止画(1080x1920)を作成する"""
+def build_scene_image(date_text, headline, out_path, scene_no, total_scenes):
+    """1シーン分の背景+見出し画像(1080x1920)を作成する"""
     img = Image.new('RGB', VIDEO_SIZE, color=(15, 23, 42))  # 濃紺背景
     draw = ImageDraw.Draw(img)
 
     try:
-        font_title = ImageFont.truetype('/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc', 70)
-        font_body = ImageFont.truetype('/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc', 48)
+        font_small = ImageFont.truetype('/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc', 44)
+        font_headline = ImageFont.truetype('/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc', 96)
     except Exception:
-        font_title = ImageFont.load_default()
-        font_body = ImageFont.load_default()
+        font_small = ImageFont.load_default()
+        font_headline = ImageFont.load_default()
 
-    # タイトル
-    draw.text((60, 120), f'トルコリラ円 {date_text}', font=font_title, fill=(255, 215, 0))
+    # 上部: 日付とシーン番号(進捗ドット)
+    draw.text((60, 100), f'トルコリラ円 {date_text}', font=font_small, fill=(180, 190, 210))
+    dot_gap = 40
+    for n in range(total_scenes):
+        color = (255, 215, 0) if n == scene_no else (70, 78, 100)
+        cx = 60 + n * dot_gap
+        draw.ellipse([cx, 170, cx + 20, 190], fill=color)
 
-    # 台本本文を折り返して描画(字幕的に中央あたりから表示)
-    wrapped = textwrap.wrap(script_text, width=20)
-    y = 500
+    # 中央: 見出しを大きく、複数行に折り返して描画
+    wrapped = textwrap.wrap(headline, width=8)
+    total_h = len(wrapped) * 120
+    y = (VIDEO_SIZE[1] - total_h) // 2
     for line in wrapped:
-        draw.text((60, y), line, font=font_body, fill=(255, 255, 255))
-        y += 70
+        bbox = draw.textbbox((0, 0), line, font=font_headline)
+        w = bbox[2] - bbox[0]
+        x = (VIDEO_SIZE[0] - w) // 2
+        draw.text((x, y), line, font=font_headline, fill=(255, 255, 255))
+        y += 120
 
     img.save(out_path)
 
 
-def get_audio_duration(audio_path):
-    # ファイル形式を確認(diagnostic)
-    file_check = subprocess.run(['file', audio_path], capture_output=True, text=True)
-    print(f'  ファイル形式チェック: {file_check.stdout.strip()}')
+def build_title_image(date_text, out_path):
+    """オープニング用の透過タイトル画像(TRY/JPY + 日付)を作成する"""
+    img = Image.new('RGBA', VIDEO_SIZE, (0, 0, 0, 0))  # 完全透明
+    draw = ImageDraw.Draw(img)
 
+    try:
+        font_title = ImageFont.truetype('/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc', 88)
+    except Exception:
+        font_title = ImageFont.load_default()
+
+    title_text = f'TRY/JPY {date_text}'
+    bbox = draw.textbbox((0, 0), title_text, font=font_title)
+    w = bbox[2] - bbox[0]
+    x = (VIDEO_SIZE[0] - w) // 2
+    y = 160  # 画面上部寄り
+
+    # 視認性を上げるため、薄い影を先に描いてから本体を描画
+    draw.text((x + 4, y + 4), title_text, font=font_title, fill=(0, 0, 0, 160))
+    draw.text((x, y), title_text, font=font_title, fill=(255, 215, 0, 255))
+
+    img.save(out_path)
+
+
+def brand_clip(input_video, flag_path, out_path, title_path=None):
+    """固定素材(オープニング/エンディング)に国旗・タイトルを合成し、無音のブランド済みクリップを作る"""
+    inputs = ['-i', input_video, '-i', flag_path]
+    if title_path:
+        inputs += ['-i', title_path]
+
+    # 国旗は左下に固定表示、タイトルがあれば追加で重ねる
+    # 動画は縦長(1080x1920)素材を想定。アスペクト比を保ったまま画面いっぱいに拡大し、
+    # はみ出た部分は中央基準でクロップする(引き伸ばしによる歪みを防ぐ)
+    filter_complex = (
+        f'[1:v]scale={FLAG_WIDTH}:-1,format=rgba,colorchannelmixer=aa=0.9[flag];'
+        f'[0:v]scale={VIDEO_SIZE[0]}:{VIDEO_SIZE[1]}:force_original_aspect_ratio=increase,'
+        f'crop={VIDEO_SIZE[0]}:{VIDEO_SIZE[1]},fps=25[base];'
+        f'[base][flag]overlay=x={FLAG_MARGIN}:y=H-h-{FLAG_MARGIN}[withflag]'
+    )
+    final_label = '[withflag]'
+    if title_path:
+        filter_complex += ';[withflag][2:v]overlay=0:0[withtitle]'
+        final_label = '[withtitle]'
+
+    subprocess.run([
+        'ffmpeg', '-y', *inputs,
+        '-filter_complex', filter_complex,
+        '-map', final_label,
+        '-an',
+        '-pix_fmt', 'yuv420p',
+        '-c:v', 'libx264',
+        out_path
+    ], check=True, capture_output=True)
+
+
+def get_video_duration(video_path):
+    result = subprocess.run(
+        ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+         '-of', 'default=noprint_wrappers=1:nokey=1', video_path],
+        capture_output=True, text=True
+    )
+    return float(result.stdout.strip())
+
+
+def get_audio_duration(audio_path):
     result = subprocess.run(
         ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
          '-of', 'default=noprint_wrappers=1:nokey=1', audio_path],
         capture_output=True, text=True
     )
-    print(f'  ffprobe stdout: {repr(result.stdout)}')
-    print(f'  ffprobe stderr: {repr(result.stderr)}')
-    print(f'  ffprobe returncode: {result.returncode}')
-
     return float(result.stdout.strip())
 
 
-def build_video(image_path, audio_path, out_path):
-    duration = get_audio_duration(audio_path)
+def build_scene_clip(image_path, duration, out_path):
+    """1シーン分の無音動画クリップ(指定秒数)を作成する"""
     subprocess.run([
         'ffmpeg', '-y',
         '-loop', '1', '-i', image_path,
-        '-i', audio_path,
-        '-c:v', 'libx264', '-tune', 'stillimage',
-        '-c:a', 'aac', '-b:a', '192k',
-        '-pix_fmt', 'yuv420p',
         '-t', str(duration),
-        '-vf', f'scale={VIDEO_SIZE[0]}:{VIDEO_SIZE[1]}',
+        '-vf', f'scale={VIDEO_SIZE[0]}:{VIDEO_SIZE[1]},fps=25',
+        '-pix_fmt', 'yuv420p',
+        '-c:v', 'libx264',
         out_path
-    ], check=True)
+    ], check=True, capture_output=True)
+
+
+def concat_clips(clip_paths, out_path, workdir):
+    """複数の動画クリップを連結する"""
+    list_path = os.path.join(workdir, 'concat_list.txt')
+    with open(list_path, 'w') as f:
+        for p in clip_paths:
+            f.write(f"file '{os.path.abspath(p)}'\n")
+
+    subprocess.run([
+        'ffmpeg', '-y',
+        '-f', 'concat', '-safe', '0', '-i', list_path,
+        '-c', 'copy',
+        out_path
+    ], check=True, capture_output=True)
+
+
+def mux_audio_with_offset(video_path, audio_path, offset_seconds, out_path, workdir):
+    """動画の総尺に合わせ、冒頭にオープニング分の無音を入れてから音声を合成する"""
+    total_duration = get_video_duration(video_path)
+    offset_ms = int(offset_seconds * 1000)
+    padded_audio = os.path.join(workdir, 'padded_audio.wav')
+
+    subprocess.run([
+        'ffmpeg', '-y',
+        '-i', audio_path,
+        '-af', f'adelay={offset_ms}|{offset_ms},apad',
+        '-t', str(total_duration),
+        padded_audio
+    ], check=True, capture_output=True)
+
+    subprocess.run([
+        'ffmpeg', '-y',
+        '-i', video_path,
+        '-i', padded_audio,
+        '-c:v', 'copy',
+        '-c:a', 'aac', '-b:a', '192k',
+        out_path
+    ], check=True, capture_output=True)
+
+
+def parse_scenes(script_text):
+    """シーンJSONを解析する。旧形式(プレーンテキスト)の場合は1シーンとして扱う"""
+    try:
+        parsed = json.loads(script_text)
+        if parsed.get('scenes'):
+            return parsed['scenes']
+    except (json.JSONDecodeError, AttributeError):
+        pass
+    # フォールバック: 旧形式のプレーンテキストを1シーンとして扱う
+    return [{'start': 0, 'end': 45, 'headline': '今日のトルコリラ円', 'narration': script_text}]
+
+
+def build_video(date_text, script_text, audio_path, out_path, workdir):
+    scenes = parse_scenes(script_text)
+    audio_duration = get_audio_duration(audio_path)
+
+    # 台本上の秒数の合計を、実際の音声の長さに合わせて比例配分する
+    nominal_total = max(s['end'] for s in scenes) or 1
+    scale = audio_duration / nominal_total
+
+    clip_paths = []
+
+    # ① オープニング(国旗+日付入りタイトルを合成)
+    title_image = os.path.join(workdir, 'title.png')
+    build_title_image(date_text, title_image)
+    opening_branded = os.path.join(workdir, 'opening_branded.mp4')
+    brand_clip(OPENING_PATH, FLAG_PATH, opening_branded, title_path=title_image)
+    opening_duration = get_video_duration(opening_branded)
+    clip_paths.append(opening_branded)
+
+    # ② 本編シーン
+    for idx, scene in enumerate(scenes):
+        duration = max((scene['end'] - scene['start']) * scale, 0.5)  # 最低0.5秒は確保
+        image_path = os.path.join(workdir, f'scene_{idx}.png')
+        clip_path = os.path.join(workdir, f'clip_{idx}.mp4')
+
+        build_scene_image(date_text, scene.get('headline', ''), image_path, idx, len(scenes))
+        build_scene_clip(image_path, duration, clip_path)
+        clip_paths.append(clip_path)
+
+    # ③ エンディング(国旗のみ合成)
+    ending_branded = os.path.join(workdir, 'ending_branded.mp4')
+    brand_clip(ENDING_PATH, FLAG_PATH, ending_branded)
+    clip_paths.append(ending_branded)
+
+    silent_video = os.path.join(workdir, 'silent.mp4')
+    concat_clips(clip_paths, silent_video, workdir)
+
+    # ナレーションはオープニング分だけ遅らせて開始する(オープニング・エンディングは無音)
+    mux_audio_with_offset(silent_video, audio_path, opening_duration, out_path, workdir)
 
 
 def main():
@@ -160,10 +320,10 @@ def main():
             raise ValueError('ダウンロードした音声ファイルが空です(0 bytes)。共有設定またはファイルIDを確認してください。')
 
         local_image = f'/tmp/caption_{i}.png'
-        build_caption_image(date_text, script_text, local_image)
-
         local_video = f'/tmp/video_{i}.mp4'
-        build_video(local_image, local_audio, local_video)
+        workdir = f'/tmp/scenes_{i}'
+        os.makedirs(workdir, exist_ok=True)
+        build_video(date_text, script_text, local_audio, local_video, workdir)
 
         # 出力用フォルダにコピー(GitHub Actionsのアーティファクトとして保存される)
         output_dir = 'output_videos'
