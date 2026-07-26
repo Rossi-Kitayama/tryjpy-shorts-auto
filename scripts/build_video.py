@@ -333,7 +333,8 @@ def main():
         # 出力用フォルダにコピー(GitHub Actionsのアーティファクトとして保存される)
         output_dir = 'output_videos'
         os.makedirs(output_dir, exist_ok=True)
-        final_path = os.path.join(output_dir, f'TRYJPY_{date_text}.mp4')
+        safe_date = date_text.replace('/', '-').replace('\\', '-')
+        final_path = os.path.join(output_dir, f'TRYJPY_{safe_date}.mp4')
         shutil.copy(local_video, final_path)
 
         # GitHub Actionsの実行結果ページへのリンクをシートに記録
